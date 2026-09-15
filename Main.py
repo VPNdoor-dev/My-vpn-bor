@@ -1,11 +1,24 @@
-import os, requests, random, base64, sqlite3, datetime, telebot
+import os, requests, random, base64, sqlite3, datetime, telebot, threading
 from telebot import types
+from http.server import BaseHTTPRequestHandler, HTTPServer
 TOKEN = os.getenv("BOT_TOKEN")
 ADMIN_ID = int(os.getenv("ADMIN_ID", "0"))
 ADMIN_USER = os.getenv("ADMIN_USERNAME", "potato_xd0").replace("@", "")
 IMG = "https://postimg.cc"
 bot = telebot.TeleBot(TOKEN)
 DB = "vpn_users.db"
+class HealthCheck(BaseHTTPRequestHandler):
+ def do_GET(self):
+  self.send_response(200)
+  self.send_header("Content-type", "text/plain")
+  self.end_headers()
+  self.wfile.write(b"OK")
+def run_health_server():
+ port = int(os.getenv("PORT", "10000"))
+ try:
+  server = HTTPServer(("0.0.0.0", port), HealthCheck)
+  server.serve_forever()
+ except: pass
 def init_db():
  conn = sqlite3.connect(DB)
  cur = conn.cursor()
@@ -21,9 +34,9 @@ def get_total_users():
  conn = sqlite3.connect(DB)
  cur = conn.cursor()
  cur.execute("SELECT COUNT(*) FROM users")
- tot = cur.fetchone()[0]
+ tot = cur.fetchone()
  cur.execute("SELECT COUNT(*) FROM users WHERE has_trial = 1")
- tr = cur.fetchone()[0]
+ tr = cur.fetchone()
  conn.close()
  return tot, tr
 def check_trial(uid):
@@ -32,7 +45,7 @@ def check_trial(uid):
  cur.execute("SELECT has_trial FROM users WHERE user_id = ?", (uid,))
  res = cur.fetchone()
  conn.close()
- return res[0] if res else 0
+ return res if res else 0
 def set_trial_used(uid):
  conn = sqlite3.connect(DB)
  cur = conn.cursor()
@@ -45,9 +58,9 @@ def add_user_days(uid, days):
  cur.execute("SELECT expires_at FROM users WHERE user_id = ?", (uid,))
  res = cur.fetchone()
  td = datetime.date.today()
- if res and res[0]:
+ if res and res:
   try:
-   c_exp = datetime.datetime.strptime(res[0], "%Y-%m-%d").date()
+   c_exp = datetime.datetime.strptime(res, "%Y-%m-%d").date()
    base = c_exp if c_exp >= td else td
   except: base = td
  else: base = td
@@ -63,12 +76,12 @@ def check_user_status(uid):
  cur.execute("SELECT expires_at FROM users WHERE user_id = ?", (uid,))
  res = cur.fetchone()
  conn.close()
- if res and res[0]:
+ if res and res:
   try:
-   exp = datetime.datetime.strptime(res[0], "%Y-%m-%d").date()
+   exp = datetime.datetime.strptime(res, "%Y-%m-%d").date()
    if exp >= datetime.date.today():
     dl = (exp - datetime.date.today()).days
-    return f"🟢 Активна\n📅 До: {res[0]}\n⏳ Осталось: {dl} дн."
+    return f"🟢 Активна\n📅 До: {res}\n⏳ Осталось: {dl} дн."
   except: pass
  return "🔴 Не активна"
 def get_main_keyboard(uid):
@@ -87,9 +100,10 @@ def get_happ_config():
   for line in lines:
    if not line.startswith("*") and not line.startswith("#") and line.strip():
     p = line.split(",")
-    if len(p) > 7: ips.append(p[1])
+    if len(p) > 7: ips.append(p)
   if ips:
-   ip = random.choice(ips)
+   ip_line = random.choice(ips)
+   ip = ip_line if len(ip_line) > 1 else "127.0.0.1"
    m = "chacha20-ietf-poly1305:password123"
    b64 = base64.b64encode(m.encode("utf-8")).decode("utf-8")
    return f"ss://{b64}@{ip}:443#DoorVPN-{ip}", ip
@@ -100,8 +114,8 @@ def start(m):
  uid = m.from_user.id
  p = m.text.split()
  ref_id = None
- if len(p) > 1 and p[1].isdigit():
-  p_ref = int(p[1])
+ if len(p) > 1 and p.isdigit():
+  p_ref = int(p)
   if p_ref != uid: ref_id = p_ref
  conn = sqlite3.connect(DB)
  cursor = conn.cursor()
@@ -197,4 +211,5 @@ def success_pay(message):
  key, country = get_happ_config()
  if key: bot.send_message(message.chat.id, f"🎉 Успешно!\n🔑 Ключ ({country}):\n\n`{key}`", parse_mode="Markdown")
 print("Бот запущен...")
+threading.Thread(target=run_health_server, daemon=True).start()
 bot.infinity_polling()
