@@ -1,24 +1,24 @@
 import os
 import requests
 import random
+import base64
 import telebot
 from telebot import types
 
-# 1. Ваш токен от @BotFather
+# 1. СЮДА ВСТАВЬТЕ ВАШ ТОКЕН ОТ @BotFather (кавычки оставьте!)
 TOKEN = "8789477182:AAFBI8Xz32wHR5gzQf0hGDe1_GjAV44FuFs"
 
-# 2. Ваш числовой Telegram ID
-ADMIN_ID = 5606075763  # 👈 Поменяйте 0 на ваш личный ID
+# 2. СЮДА ВСТАВЬТЕ ВАШ ЧИСЛОВОЙ ID ОТ @userinfobot (БЕЗ кавычек!)
+ADMIN_ID = 5606075763  # 👈 Замените 0 на ваш ID, например: ADMIN_ID = 123456789
 
-# 3. Ваша ссылка на Telegram для поддержки (без знака @)
+# 3. Ваш юзернейм (уже настроен и готов к работе!)
 ADMIN_USERNAME = "potato_xd0"
 
-# 4. Ссылка на вашу картинку логотипа с дверью
+# 4. Ссылка на картинку логотипа
 IMAGE_URL = "https://i.imgur.com/EQKdqpl.png" 
 
 bot = telebot.TeleBot(TOKEN)
 
-# Функция генерации современного ключа Shadowsocks (идеально для Happ)
 def get_happ_config():
     try:
         url = "http://vpngate.net"
@@ -31,14 +31,13 @@ def get_happ_config():
                 continue
             parts = line.split(',')
             if len(parts) > 7:
-                valid_ips.append((parts[1], parts[2], parts[6])) # IP, Port, Country
+                valid_ips.append((parts[1], parts[2], parts[6]))
                 
         if valid_ips:
             chosen = random.choice(valid_ips)
             fake_password = "password123"
             method_and_pass = f"chacha20-ietf-poly1305:{fake_password}"
-            import base64
-            b64_login = base64.b64encode(methopngnd_pass.encode('utf-8')).decode('utf-8')
+            b64_login = base64.b64encode(method_and_pass.encode('utf-8')).decode('utf-8')
             
             happ_key = f"ss://{b64_login}@{chosen[0]}:{chosen[1]}#DoorVPN-{chosen[2]}"
             return happ_key, chosen[2]
@@ -160,7 +159,6 @@ def process_payment(call):
             bot.send_message(call.message.chat.id, "❌ Сервера обновляются, нажмите кнопку еще раз через 5 секунд.")
         return
 
-    # Логика платных инвойсов Stars
     tariff_data = {
         "buy_1m": ("1 месяц", 50), "buy_3m": ("3 месяца", 120),
         "buy_6m": ("6 месяцев", 220), "buy_1y": ("1 год", 400), "buy_inf": ("НАВСЕГДА", 1000)
