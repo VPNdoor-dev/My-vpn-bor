@@ -5,41 +5,21 @@ import base64
 import sqlite3
 import datetime
 import telebot
-import threading
 from telebot import types
-from http.server import BaseHTTPHandler, HTTPServer
 
 TOKEN = os.getenv("BOT_TOKEN")
 ADMIN_ID = int(os.getenv("ADMIN_ID", "0"))
 ADMIN_USER = os.getenv("ADMIN_USERNAME", "potato_xd0").replace("@", "")
-IMG = "https://i.imgur.com/EQKcqpl.png"
-bot = telebut.TeleBot(TOKEN)
+IMG = "https://imgur.com"
+bot = telebot.TeleBot(TOKEN)
 DB = "vpn_users.db"
-
-
-class HealthCheck(BaseHTTPHandler):
-    def do_GET(self):
-        self.send_response(200)
-        self.send_header("Content-type", "text/plain")
-        self.end_headers()
-        self.wfile.write(b"OK")
-
-
-def run_health_server():
-    port = int(os.getenv("PORT", "10000"))
-    try:
-        server = HTTPServer(("0.0.0.0", port), HealthCheck)
-        server.server_forever():
-    except:
-        pass
 
 
 def init_db():
     conn = sqlite3.connect(DB)
     cur = conn.cursor()
     cur.execute(
-        """CREATE TABLE IF NOT
-        EXISTS users (
+        """CREATE TABLE IF NOT EXISTS users (
             user_id INTEGER PRIMARY KEY, 
             has_trial INTEGER DEFAULT 0, 
             expires_at TEXT, 
@@ -53,17 +33,17 @@ def init_db():
 init_db()
 
 
-def get_trial_days(+:
+def get_trial_days():
     t = datetime.date.today()
     lim = datetime.date(2026, 10, 15)
-    return 5 af t <= lim else 3
+    return 5 if t <= lim else 3
 
 
 def get_total_users():
     conn = sqlite3.connect(DB)
-cur = conn.cursor()
+    cur = conn.cursor()
     cur.execute("SELECT COUNT(*) FROM users")
-tot = cur.fetchone()
+    tot = cur.fetchone()
     cur.execute("SELECT COUNT(*) FROM users WHERE has_trial = 1")
     tr = cur.fetchone()
     conn.close()
@@ -73,7 +53,7 @@ tot = cur.fetchone()
 def check_trial(uid):
     conn = sqlite3.connect(DB)
     cur = conn.cursor()
-    cur.execute("SELECT has_trial FROM users WHERE user_id = (", (uid,))
+    cur.execute("SELECT has_trial FROM users WHERE user_id = ?", (uid,))
     res = cur.fetchone()
     conn.close()
     return res if res else 0
@@ -83,26 +63,26 @@ def set_trial_used(uid):
     conn = sqlite3.connect(DB)
     cur = conn.cursor()
     cur.execute("UPDATE users SET has_trial = 1 WHERE user_id = ?", (uid,))
-    comnn.commit()
+    conn.commit()
     conn.close()
 
 
 def add_user_days(uid, days):
     conn = sqlite3.connect(DB)
     cur = conn.cursor()
-    cur.execute("SELECT expires_at FROM users WHERE user_id = (", (uid,))
+    cur.execute("SELECT expires_at FROM users WHERE user_id = ?", (uid,))
     res = cur.fetchone()
     td = datetime.date.today()
-    if res:
+    if res and res:
         try:
-            c_exp = datetime.datetime.strptime(res[0], "%Yim-%d").date()
+            c_exp = datetime.datetime.strptime(res, "%Y-%m-%d").date()
             base = c_exp if c_exp >= td else td
         except:
             base = td
     else:
-            base = td
+        base = td
     n_exp = base + datetime.timedelta(days=days)
-    n_exp_str = n_exp.strftime("%Yim-%d")
+    n_exp_str = n_exp.strftime("%Y-%m-%d")
     cur.execute(
         "INSERT OR REPLACE INTO users (user_id, expires_at) VALUES (?, ?)",
         (uid, n_exp_str),
@@ -118,168 +98,370 @@ def check_user_status(uid):
     cur.execute("SELECT expires_at FROM users WHERE user_id = ?", (uid,))
     res = cur.fetchone()
     conn.close()
-    if res and res[0]:
+    if res and res:
         try:
-            exp = datetime.datetime.strptime(res[0], "%Y-m-%d").date()
+            exp = datetime.datetime.strptime(res, "%Y-%m-%d").date()
             if exp >= datetime.date.today():
                 dl = (exp - datetime.date.today()).days
-                return f"nxBCBFBBBBq~QBSBɕluqñB{FFBBBFF�푱BB(ፕ((ɕɸ~RBwBԃBBFBBBB(()}}剽ɐե(̹I-剽ɑ5ɭɕͥ}剽ɐQՔ((̹-剽ɑ	ѽ~NLBBFBFF,BB{BBBFB(̹-剽ɑ	ѽJBsBF<BBBBBFBB(((̹-剽ɑ	ѽ~FBBBBBFBFF0BFFBB(̹-剽ɑ	ѽJBcBFFFFBFBF<(((̹-剽ɑ	ѽZB{BBBBBFF0FBFBBF�(̹-剽ɑ	ѽ~BBFBBBBBFBBB((ե5%9}%(̹-剽ɑ	ѽZBCBBBBBBBBBF0(ɕɸ(()}}((ɰ􀉡輽ܹєн(ɕɕՕ̹СɰѥаԤ(̀ɕѕйРq(̀mt(ȁ((ɥ((хݥѠ((хݥѠ(((􁱥Р((̹ltlt((չɅ̤(􀉍јݽɐ̈(Ѐ􁉅͔йѕјј(ɕɸ輽̍YA8퍽չ􈰁չ(ፕЁፕѥ́(ɥС{F#BBBBA$(ɕɸ99(((йͅ}ȡlхЉt)хС(ե􁴹ɽ}͕ȹ(􁴹ѕйР(ɕ}9(āltР(}ɕ􁥹Сlt(}ɕե(ɕ}}ɕ(űє̹С(ͽȀ􁍽ͽȠ(ͽȹᕍєM1
-P͕}I=4͕́]!I͕}􀠈ե(ͽȹэ(Ё(ͽȹᕍє(%9MIP%9Q<͕͕̀}ɕɕ}䤁Y1UL(եɕ}((Р(ɕ}(}͕}̡ɕ}Ĥ((й͕}ͅ(ɕ}(~NBSFFB̃BBF#BBBBFFF/BBBԄăBBBF0BBBBBFBBจ(͕}5ɭݸ((ፕ((͔(Ѐ~H؃BFBBBFɽ}͕ȹ}qzxx//,,4`c4,
-܈4'`4-t/4.4`/t`t-t`4,.4`H4-4.c
-\
-(/`4,4,.c.t`-H4/4-t/tc<'aHB؈H]XZ[^X\
-ZY
-NN[K]YSQ\[ۏ]\WX\\Z؋\WٛOHX\ۈ
-B^\[Y\YJK]Y\WX\\Z؋\W[OHX\ۈBY\YW[\۝[\\Vȝ^JBY^[\JNZYHKW\\YYK^OH'4(,4`4.4a4b4.4'/.,4`,X\\H\\˒[[R^X\X\\
+                return f"🟢 Активна\n📅 До: {res}\n⏳ Осталось: {dl} дн."
+        except:
+            pass
+    return "🔴 Не активна"
 
-BH]X[^\
-BX\\Y
-\\˒[[R^X\]ۊ'H4(-t`t`8%H4%4/t}ф}ɥ(((ɭ(̹%-剽ɑ	ѽ(yăBsBFPL}ф}͕|Ŵ((̹%-剽ɑ	ѽ(Z̃BsBF�Pԃ䈰}ф}͕|ʹ(((ɭ(̹%-剽ɑ	ѽ(Z؃BsBF�PL}ф}͕|ٴ((̹%-剽ɑ	ѽ(ZăBOBBЃPL}ф}͕|(((ɭ(̹%-剽ɑ	ѽ(ZBwBCBKBBWBOBSB@RP䈰}ф}͕}(((й͕}ͅ(й(ZBBFBFBF/BԃBBBBF,qqBKF/BBFBFBԃFBFBFBBF<!舰(ɕ}ɭɭ(͕}5ɭݸ((ѕЀ)(R
-	
-M#7FGW26V6W6W%7FGW2VB&B6VEW76vR6BBb/	"B	
-MâCVG
--
--=7FGW7"'6UFS$&Fv"VƖbFWB/	Y"BBBBBFBFF0BFFBB(􁉽й}͕ɹ(й͕}ͅ(й(~NBBFBFBBF,qqB_BBFF@B耨ăBBBF0BBBBBFBBศqqR�BFF/BBBq輽йWz[Y_O\^ZYXȋ\W[OHX\ۈ
-B[YK^OH
-▄ $t/t/,.4`c4`t-t`4,-t`[Y\YJK]Y
-▄ Ищу уЧел...")
+
+def get_main_keyboard(uid):
+    m = types.ReplyKeyboardMarkup(resize_keyboard=True)
+    m.add(
+        types.KeyboardButton("📊 Тарифы и Оплата"),
+        types.KeyboardButton("📌 Моя подписка"),
+    )
+    m.add(
+        types.KeyboardButton("👥 Пригласить друга"),
+        types.KeyboardButton("💡 Инструкция"),
+    )
+    m.add(
+        types.KeyboardButton("🔄 Обновить сервер"),
+        types.KeyboardButton("🆘 Тех. поддержка"),
+    )
+    if uid == ADMIN_ID:
+        m.add(types.KeyboardButton("⚙️ Админ-панель"))
+    return m
+
+
+def get_happ_config():
+    try:
+        url = "http://vpngate.net"
+        resp = requests.get(url, timeout=(4, 5))
+        lines = resp.text.split("\n")
+        ips = []
+        for line in lines:
+            if (
+                line.strip()
+                and not line.startswith("*")
+                and not line.startswith("#")
+                and "vpn" in line
+            ):
+                p = line.split(",")
+                if len(p) > 2:
+                    ips.append((p, p))
+        if ips:
+            ip, country = random.choice(ips)
+            m = "chacha20-ietf-poly1305:password123"
+            b64 = base64.b64encode(m.encode("utf-8")).decode("utf-8")
+            return f"ss://{b64}@{ip}:443#DoorVPN-{country}", country
+    except Exception as e:
+        print(f"Ошибка API: {e}")
+    return None, None @bot.message_handler(commands=["start"])
+def start(m):
+    uid = m.from_user.id
+    p = m.text.split()
+    ref_id = None
+    if len(p) > 1 and p.isdigit():
+        p_ref = int(p)
+        if p_ref != uid:
+            ref_id = p_ref
+    conn = sqlite3.connect(DB)
+    cursor = conn.cursor()
+    cursor.execute("SELECT user_id FROM users WHERE user_id = ?", (uid,))
+    ex = cursor.fetchone()
+    if not ex:
+        cursor.execute(
+            "INSERT INTO users (user_id, referred_by) VALUES (?, ?)",
+            (uid, ref_id),
+        )
+        conn.commit()
+        if ref_id:
+            add_user_days(ref_id, 1)
+            try:
+                bot.send_message(
+                    ref_id,
+                    "🎉 Друг зашел по ссылке! +1 день подписки.",
+                    parse_mode="Markdown",
+                )
+            except:
+                pass
+    conn.close()
+    t = (
+        f"👋 Привет, {m.from_user.first_name}!\n"
+        f"Добро пожаловать в **Door VPN**.\n\n"
+        f"🛡 Премиум-сервис для **Happ**.\n"
+        f"Управляйте меню 👇"
+    )
+    kb = get_main_keyboard(uid)
+    try:
+        bot.send_photo(
+            m.chat.id, IMG, caption=t, reply_markup=kb, parse_mode="Markdown"
+        )
+    except:
+        bot.send_message(m.chat.id, t, reply_markup=kb, parse_mode="Markdown")
+
+
+@bot.message_handler(content_types=["text"])
+def text_handler(m):
+    uid = m.from_user.id
+    if m.text == "📊 Тарифы и Оплата":
+        markup = types.InlineKeyboardMarkup()
+        td = get_trial_days()
+        markup.add(
+            types.InlineKeyboardButton(
+                f"🎁 Тест — {td} Дн.", callback_data="buy_trial"
+            )
+        )
+        markup.add(
+            types.InlineKeyboardButton(
+                "🚀 1 Мес — 50 ⭐", callback_data="pay_select_1m"
+            ),
+            types.InlineKeyboardButton(
+                "🔥 3 Мес — 85 ⭐", callback_data="pay_select_3m"
+            ),
+        )
+        markup.add(
+            types.InlineKeyboardButton(
+                "💥 6 Мес — 150 ⭐", callback_data="pay_select_6m"
+            ),
+            types.InlineKeyboardButton(
+                "👑 1 Год — 250 ⭐", callback_data="pay_select_1y"
+            ),
+        )
+        markup.add(
+            types.InlineKeyboardButton(
+                "♾ НАВСЕГДА — 500 ⭐", callback_data="pay_select_inf"
+            )
+        )
+        bot.send_message(
+            m.chat.id,
+            "✨ **Тарифные планы**\n\nВыберите тариф для Happ:",
+            reply_markup=markup,
+            parse_mode="Markdown",
+        )
+    elif m.text == "📌 Моя подписка":
+        status = check_user_status(uid)
+        bot.send_message(
+            m.chat.id,
+            f"👤 **Профиль:**\n\nID: `{uid}`\nСтатус:\n{status}",
+            parse_mode="Markdown",
+        )
+    elif m.text == "👥 Пригласить друга":
+        name = bot.get_me().username
+        bot.send_message(
+            m.chat.id,
+            f"🎁 **Рефералы**\n\nЗа друга: **+1 день**.\n\n"
+            f"🔗 Ссылка:\n`https://t.me{name}?start={uid}`",
+            parse_mode="Markdown",
+        )
+    elif m.text == "🔄 Обновить сервер":
+        bot.send_message(m.chat.id, "🔄 Ищу узел...")
         key, country = get_happ_config()
         if key:
-           $bot.send_message(
+            bot.send_message(
                 m.chat.id,
-                f"🔑 **Узел изменен!**\n"🔑 Страна: ( {country}\n\n`{key}`",
+                f"✅ **Узел изменен!**\n📍 Страна: {country}\n\n`{key}`",
                 parse_mode="Markdown",
             )
         else:
-            bot.send_message(m.chat.id, "▄ Попробуйте ппзднеѵ.")
-    elif m.text == "⒅ Мнструкция":
+            bot.send_message(m.chat.id, "❌ Попробуйте позже.")
+    elif m.text == "💡 Инструкция":
         bot.send_message(
             m.chat.id,
-            "╟ **Настройка Happ:**\n\n" "1> Пкачайте Happ.\n" "2> £копируйте ключ `ss://`.\n" "3> Вставте ключ в Happ. 💅",
+            "⚙️ **Настройка Happ:**\n\n"
+            "1️⃣ Скачайте приложение Happ.\n"
+            "2️⃣ Скопируйте ключ `ss://`.\n"
+            "3️⃣ Вставьте ключ в Happ. 🚀",
             parse_mode="Markdown",
         )
-    elif m.text == "🇭 Тех. пддержкм":
+    elif m.text == "🆘 Тех. поддержка":
         m_up = types.InlineKeyboardMarkup()
         m_up.add(
             types.InlineKeyboardButton(
-                "🙇 Написать", url=f"https://t.me/{ADMIN_USER}"
+                "👨‍💻 Написать", url=f"https://t.me{ADMIN_USER}"
             )
         )
-        bot.send_message(m.chat.id, "👥 Поддержка на связh:", reply_markup=m_up)
-    elif (
-        m.text in [
-            "╡ Admin-панель",
-            "▖ Админ-панель",
-        ]
-        and uid == ADMIN_ID
-    ):
+        bot.send_message(m.chat.id, "🤝 Поддержка на связи:", reply_markup=m_up)
+    elif m.text in ["⚙️ Admin-панель", "⚙️ Админ-панель"] and uid == ADMIN_ID:
         markup = types.InlineKeyboardMarkup()
         markup.add(
             types.InlineKeyboardButton(
-                "📢 Статустика",
-                callback_data="admin_stats",
+                "📈 Статистика", callback_data="admin_stats"
             ),
             types.InlineKeyboardButton(
-                "📂 Выдать доступ",
-                callback_data="admin_give_id",
+                "🎫 Выдать доступ", callback_data="admin_give_id"
             ),
         )
-       -]EW76vR6BB/	"B
-	
-]F֖7G&F#"&WǕ&W&W�F&B6&6VW'FW"gV3&F32FF7F'G7vF&F֖"FVbF֖6"6b6g&W6W"BDԔC&WGW&&B7vW%6&6VW'6Bb6FF&F֖7FG2#FBG"vWEFFW6W'2&B6VEW76vR6W76vR6BBb/	92(}M---
-}]
-#FE
--]-#G%"VƖb6FF&F֖vfUB#6r&B6VEW76vR6W76vR6BB/	:"
-	--]MFVVw&B
-}-
--]
-M
--M
-}"&B&Vv7FW%WE7FWFW"6rF֖vWEBFVbF֖vWEBғbg&W6W"BDԔC&WGW&bBFWBFvB&B6VEW76vR6BB.)hBB
--
-r
-mM"&WGW&EBBFWB&WGW2ƖTW&&D&W&WFBGW2ƖTW&&D'WGF•/	r
-	]b"6&6FFb&FvfUEG3 &WFBGW2ƖTW&&D'WGF•.)ib2
-	]m"6&6FFb&FvfUEG &WFBGW2ƖTW&&D'WGF•.)Zb
-	]m]""6&6FFb&FvfUEG &WFBGW2ƖTW&&D'WGF•.)Y
-	=B"6&6FFb&FvfUEG3cR &WFBGW2ƖTW&&D'WGF•.)i
-	
--]=M"6&6FFb&FvfUEG󓓓 &B6VEW76vR6BBb.)hB
-	-]
-
--
-]
-M
-MBEG"&WǕ&W&W'6UFS$&Fv"F&B6&6VW'FW"gV3&F32FF7F'G7vF&FvfU"FVbF֖6f&vfU6"6b6g&W6W"BDԔC&WGW&&B7vW%6&6VW'6BEBF26FF7ƗB%"EBF2BEBBF2FEW6W%F2EBF2&B6VEW76vR6W76vR6BBb.)i
-	M
-F7
-M
-M-]
-MBEG"'6UFS$&Fv"W6VG'vWE6frbWG'FWBb/	:"
-	
-M-
-
--
-
---
--
-
--
-
-M2
-F7
-M] b/	I
--
-
-6VG'	-
-
-rW &B6VEW76vREBFWB'6UFS$&Fv"&B6VEW76vR6W76vR6BBb.)hB
-	r
--
-
--]"W6WC&B6VEW76vR6W76vR6BBb.)Y
-	R
-=
--
---
-
-=
-
-åW"F&B6&6VW'FW"gV3&F32FF7F'G7vF'6VV7E"FVb6VV7E6"6&B7vW%6&6VW'6BF&fb6FF7ƗB%"Т&WGW2ƖTW&&D&W&WFBGW2ƖTW&&D'WGF•/	bFVVw&7F'2"6&6FFb&'W7F'5F&fg"&WFBGW2ƖTW&&D'WGF•/	8"
-	
-
--
-			-
-=}="6&6FFb&'WVF&fg"&B6VEW76vR6W76vR6BB/	8"
-
-
--Ӣ"&WǕ&W&W'6UFS$&Fv"F&B6&6VW'FW"gV3&F32FF&'WG&"&'W7F'5"&'W7F'56"&'W7F'5f"&'W7F'5"&'W7F'5b"&'WV"&'WV6"&'WVf"&'WV"&'WVb"ТFVbVE6"6&B7vW%6&6VW'6BVB6g&W6W"@'G26FF7ƗB%"b6FF&'WG&#b6V6G&VB&B6VEW76vR6W76vR6BB.)i
-	-
-=mR
-
-
-
--]"&WGW&F2vWEG&F2&B6VEW76vR6W76vR6BBH4(t/--4,4cc4..4/t.4cB^K[HH]\ۙY
-BY^JN]X[\Y
-ZY
-BY\\^\ZY^\B[Y\YJ[Y\YK]Y'4(-t`t`4/t,^\H4-4/KW'$H4(t``4,4/t,zwչqq(͕}5ɭݸ((͔(bot.send_message(call.message.chat.id, "▄ Озибка")
-        returm
-    method = parts[1]
-    tariff = parts[2]
+        bot.send_message(
+            m.chat.id, "🔒 Панель Administrator:", reply_markup=markup
+        )
+
+
+@bot.callback_query_handler(func=lambda c: c.data.startswith("admin_"))
+def admin_cb(call):
+    if call.from_user.id != ADMIN_ID:
+        return
+    bot.answer_callback_query(call.id)
+    if call.data == "admin_stats":
+        total, trials = get_total_users()
+        bot.send_message(
+            call.message.chat.id,
+            f"📊 Статистика:\n\nЮзеров: {total}\nТестов: {trials}",
+        )
+    elif call.data == "admin_give_id":
+        msg = bot.send_message(
+            call.message.chat.id,
+            "✍️ Введи Telegram ID пользователя, которому хочешь выдать доступ:",
+        )
+        bot.register_next_step_handler(msg, admin_get_id)
+
+
+def admin_get_id(m):
+    if m.from_user.id != ADMIN_ID:
+        return
+    if not m.text.isdigit():
+        bot.send_message(m.chat.id, "❌ ID должен состоять только из цифр!")
+        return
+    target_id = int(m.text)
+    markup = types.InlineKeyboardMarkup()
+    markup.add(
+        types.InlineKeyboardButton(
+            "🚀 1 Месяц", callback_data=f"adm_give_{target_id}_30"
+        )
+    )
+    markup.add(
+        types.InlineKeyboardButton(
+            "🔥 3 Месяца", callback_data=f"adm_give_{target_id}_90"
+        )
+    )
+    markup.add(
+        types.InlineKeyboardButton(
+            "💥 6 Месяцев", callback_data=f"adm_give_{target_id}_180"
+        )
+    )
+    markup.add(
+        types.InlineKeyboardButton(
+            "👑 1 Год", callback_data=f"adm_give_{target_id}_365"
+        )
+    )
+    markup.add(
+        types.InlineKeyboardButton(
+            "♾ Навсегда", callback_data=f"adm_give_{target_id}_9999"
+        )
+    )
+    bot.send_message(
+        m.chat.id,
+        f"⏳ Выбери время подписки для ID `{target_id}`:",
+        reply_markup=markup,
+        parse_mode="Markdown",
+    )
+
+
+@bot.callback_query_handler(func=lambda c: c.data.startswith("adm_give_"))
+def admin_confirm_give_cb(call):
+    if call.from_user.id != ADMIN_ID:
+        return
+    bot.answer_callback_query(call.id)
+    _, _, t_id, days = call.data.split("_")
+    t_id, days = int(t_id), int(days)
+    add_user_days(t_id, days)
+    bot.send_message(
+        call.message.chat.id,
+        f"✅ Подписка на {days} дней успешно добавлена для ID `{t_id}`!",
+        parse_mode="Markdown",
+    )
+    key, country = get_happ_config()
+    if key:
+        try:
+            text = (
+                f"🎉 Администратор активировал вам подписку на **{days} дней**!\n"
+                f"📍 Узел: {country}\n\nВаш ключ для Happ:\n`{key}`"
+            )
+            bot.send_message(t_id, text, parse_mode="Markdown")
+            bot.send_message(
+                call.message.chat.id,
+                f"🚀 Ключ автоматически отправлен пользователю в чат!",
+            )
+        except:
+            bot.send_message(
+                call.message.chat.id,
+                f"⚠️ Не удалось отправить ключ в чат. Скопируй вручную:\n\n`{key}`",
+	)
+	@bot.callback_query_handler(func=lambda c: c.data.startswith("pay_select_"))
+def pay_select_cb(call):
+    bot.answer_callback_query(call.id)
+    tariff = call.data.split("_")[-1]
+    markup = types.InlineKeyboardMarkup()
+    markup.add(
+        types.InlineKeyboardButton(
+            "⭐ Telegram Stars", callback_data=f"buy_stars_{tariff}"
+        )
+    )
+    markup.add(
+        types.InlineKeyboardButton(
+            "💳 Банковская карта / СБП (Вручную)",
+            callback_data=f"buy_manual_{tariff}",
+        )
+    )
+    bot.send_message(
+        call.message.chat.id,
+        "💳 **Выберите способ оплаты:**",
+        reply_markup=markup,
+        parse_mode="Markdown",
+    )
+
+
+@bot.callback_query_handler(
+    func=lambda c: c.data
+    in [
+        "buy_trial",
+        "buy_stars_1m",
+        "buy_stars_3m",
+        "buy_stars_6m",
+        "buy_stars_1y",
+        "buy_stars_inf",
+        "buy_manual_1m",
+        "buy_manual_3m",
+        "buy_manual_6m",
+        "buy_manual_1y",
+        "buy_manual_inf",
+    ]
+)
+def payment_cb(call):
+    bot.answer_callback_query(call.id)
+    uid = call.from_user.id
+    parts = call.data.split("_")
+
+    if call.data == "buy_trial":
+        if check_trial(uid) == 1:
+            bot.send_message(call.message.chat.id, "❌ Вы уже брали тест!")
+            return
+        days = get_trial_days()
+        bot.send_message(call.message.chat.id, "⏳ Создаю линию...")
+        key, country = get_happ_config()
+        if key:
+            set_trial_used(uid)
+            add_user_days(uid, days)
+            bot.send_message(
+                call.message.chat.id,
+                f"🎉 Тест на {days} дн.!\n📍 Страна: {country}\n\n`{key}`",
+                parse_mode="Markdown",
+            )
+        else:
+            bot.send_message(call.message.chat.id, "❌ Ошибка создания линии.")
+        return
+
+    method = parts
+    tariff = parts
     t_map = {
         "1m": ("1 мес", 50, "50 руб", 30),
         "3m": ("3 мес", 85, "85 руб", 90),
-        "6m": ("6 пс", 150, "150 руб", 180),
-        "1y": ("1 год", 250, "250 рув,", 365),
-        "inf": ("Насвегда", 500, "500 рув,", 9999),
+        "6m": ("6 мес", 150, "150 руб", 180),
+        "1y": ("1 год", 250, "250 руб", 365),
+        "inf": ("Навсегда", 500, "500 руб", 9999),
     }
     name, star_p, rub_text, d = t_map[tariff]
     if method == "stars":
         prices = [types.LabeledPrice(label="Stars", amount=star_p)]
         bot.send_invoice(
             call.message.chat.id,
-            title=f"VPN — {name}",
-            description="Happ Premium",
+            title=f"Door VPN — {name}",
+            description="Премиум Happ",
             invoice_payload=f"vpn_{d}",
             provider_token="",
             currency="XTR",
@@ -287,52 +469,42 @@ BY\\^\ZY^\B[Y\YJ[Y\YK]Y
             start_parameter="vpn-sub",
         )
     elif method == "manual":
-        link = (
-            "https://www.tbank.ru",
-            "/rm/r_cOVTjCVpMV.",
-            "HLwIqatOdN/jbYw328360"
-        )
+        link = "https://tbank.ru"
         text = (
-            f"📂 *+Тариф {name}**\n"
-            f"Цена: `{rub_text}`\n\n"
-            f"1 > НаѶми на ссылку длџ \n"
-            f"платы картой/СБм:\n"
-            f"{link}\n\n"
-            f"2 >K Переведи `{rub_text}`\n"
-            f"3 > Отравь чеи в \n"
-            f"ппддеш4-.`ΈQRSTTW$4-4/4.4/H4/`4/,-t`4.4`4,t,4.,4/t`H4.`t`4,-`4,l-4,4`t`4..Q! 👆"
+            f"💳 **Покупка тарифа {name}**\nСтоимость: `{rub_text}`\n\n"
+            f"1️⃣ Нажми на ссылку для оплаты:\n{link}\n\n"
+            f"2️⃣ Переведи `{rub_text}`\n"
+            f"3️⃣ Отправь чек в тех. поддержку: @{ADMIN_USER}\n\n"
+            f"Администратор проверит баланс и выдаст ключ! 🚀"
         )
         bot.send_message(
             call.message.chat.id,
             text,
             parse_mode="Markdown",
-            disable_web_page_preview=True
+            disable_web_page_preview=True,
         )
 
 
-$bot.pre_checkout_query_handler(func=lambda query: True)
+@bot.pre_checkout_query_handler(func=lambda query: True)
 def precheck(q):
     bot.answer_pre_checkout_query(q.id, ok=True)
 
 
-$bot.message_handler(content_types=["successful_payment"])
+@bot.message_handler(content_types=["successful_payment"])
 def success_pay(message):
-    sp = message.successful_payment
-    p = sp.invoice_payload
-    d = int(p.split("\")[-1])
+    p = message.successful_payment.invoice_payload
+    d = int(p.split("_")[-1])
     uid = message.from_user.id
     add_user_days(uid, d)
-    bot.send_message(message.chat.id, "┡ Подключаю...")
+    bot.send_message(message.chat.id, "⏳ Подключаю...")
     key, country = get_happ_config()
     if key:
         bot.send_message(
             message.chat.id,
-            f"📢 Успешно!\n"
-            f"📥 Ключ ({country}):\n\n`{key}`",
+            f"🎉 Успешно!\n🔑 Ключ ({country}):\n\n`{key}`",
             parse_mode="Markdown",
         )
 
 
-print("Bot started...")
-threading.Thread(target=run_health_server, daemon=True).start()
+print("Бот запущен...")
 bot.infinity_polling()
