@@ -14,14 +14,7 @@ bot = telebot.TeleBot(TOKEN)
 def init_db():
 conn = sqlite3.connect("vpn_users.db")
 cursor = conn.cursor()
-cursor.execute("""
-CREATE TABLE IF NOT EXISTS users (
-user_id INTEGER PRIMARY KEY,
-has_trial INTEGER DEFAULT 0,
-expires_at TEXT,
-referred_by INTEGER
-)
-""")
+cursor.execute("CREATE TABLE IF NOT EXISTS users (user_id INTEGER PRIMARY KEY, has_trial INTEGER DEFAULT 0, expires_at TEXT, referred_by INTEGER)")
 conn.commit()
 conn.close()
 init_db()
@@ -156,7 +149,7 @@ bot.send_message(message.chat.id, f"👤 Профиль Door VPN:\n\nID: {user_i
 elif message.text == "👥 Пригласить друга":
 bot_info = bot.get_me()
 ref_link = f"t.me{bot_info.username}?start={user_id}"
-ref_text = f"🎁 Реферальная программа Door VPN\n\nПриглашайте друзей и пользуйтесь VPN бесплатно! За каждого друга, который запустит бота по вашей ссылке, вы мгновенно получите +1 день к вашей подписки.\n\n🔗 Ваша личная ссылка для приглашений:\n{ref_link}\n\nПросто скопируйте её и отправьте друзьям!"
+ref_text = f"🎁 Реферальная программа Door VPN\n\nПриглашайте друзей и пользуйтесь VPN бесплатно! За каждого друга, который запустит бота по вашей ссылке, вы мгновенно получите +1 день к вашей подписке.\n\n🔗 Ваша личная ссылка для приглашений:\n{ref_link}\n\nПросто скопируйте её и отправьте друзьям!"
 bot.send_message(message.chat.id, ref_text, parse_mode="Markdown")
 elif message.text == "🔄 Обновить сервер":
 bot.send_message(message.chat.id, "🔄 Поиск наиболее свободного узла Door VPN...")
