@@ -29,7 +29,7 @@ def run_health_server():
     port = int(os.getenv("PORT", "10000"))
     try:
         server = HTTPServer(("0.0.0.0", port), HealthCheck)
-        server.serve_forever():
+        server.server_forever():
     except:
         pass
 
