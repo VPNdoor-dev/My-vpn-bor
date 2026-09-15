@@ -4,7 +4,7 @@ from http.server import BaseHTTPRequestHandler, HTTPServer
 TOKEN = os.getenv("BOT_TOKEN")
 ADMIN_ID = int(os.getenv("ADMIN_ID", "0"))
 ADMIN_USER = os.getenv("ADMIN_USERNAME", "potato_xd0").replace("@", "")
-IMG = "https://postimg.cc"
+IMG = "IMG = "https://i.imgur.com/EQKdqpl.png"
 bot = telebot.TeleBot(TOKEN)
 DB = "vpn_users.db"
 class HealthCheck(BaseHTTPRequestHandler):
