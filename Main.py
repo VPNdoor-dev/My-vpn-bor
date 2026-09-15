@@ -9,21 +9,13 @@ from telebot import types
 TOKEN = os.getenv("BOT_TOKEN")
 ADMIN_ID = int(os.getenv("ADMIN_ID", "0"))
 ADMIN_USERNAME = os.getenv("ADMIN_USERNAME", "potato_xd0")
-IMAGE_URL = "https://i.imgur.com/EQKdqpl.png"
+IMAGE_URL = "unsplash.com"
 bot = telebot.TeleBot(TOKEN)
-def init_db():
-conn = sqlite3.connect("vpn_users.db")
-cursor = conn.cursor()
-cursor.execute(
-"CREATE TABLE IF NOT EXISTS users "
-"(user_id INTEGER PRIMARY KEY, "
-"has_trial INTEGER DEFAULT 0, "
-"expires_at TEXT, "
-"referred_by INTEGER)"
-)
-conn.commit()
-conn.close()
-init_db()
+db_conn = sqlite3.connect("vpn_users.db")
+db_cursor = db_conn.cursor()
+db_cursor.execute("CREATE TABLE IF NOT EXISTS users (user_id INTEGER PRIMARY KEY, has_trial INTEGER DEFAULT 0, expires_at TEXT, referred_by INTEGER)")
+db_conn.commit()
+db_conn.close()
 def get_trial_days():
 curr = datetime.date.today()
 dl = datetime.date(2026, 10, 15)
@@ -33,62 +25,38 @@ return 3
 def add_user_days(user_id, days):
 conn = sqlite3.connect("vpn_users.db")
 cursor = conn.cursor()
-cursor.execute(
-"SELECT expires_at FROM users "
-"WHERE user_id = ?",
-(user_id,)
-)
+cursor.execute("SELECT expires_at FROM users WHERE user_id = ?", (user_id,))
 res = cursor.fetchone()
 curr = datetime.date.today()
 if res and res[0]:
-cur_exp = datetime.datetime.strptime(
-res[0], "%Y-%m-%d"
-).date()
+cur_exp = datetime.datetime.strptime(res[0], "%Y-%m-%d").date()
 if cur_exp >= curr:
 new_exp = cur_exp + datetime.timedelta(days=days)
 else:
 new_exp = curr + datetime.timedelta(days=days)
 else:
 new_exp = curr + datetime.timedelta(days=days)
-cursor.execute(
-"UPDATE users SET expires_at = ? "
-"WHERE user_id = ?",
-(new_exp.strftime("%Y-%m-%d"), user_id)
-)
+cursor.execute("UPDATE users SET expires_at = ? WHERE user_id = ?", (new_exp.strftime("%Y-%m-%d"), user_id))
 conn.commit()
 conn.close()
 return new_exp.strftime("%Y-%m-%d")
 def check_user_status(user_id):
 conn = sqlite3.connect("vpn_users.db")
 cursor = conn.cursor()
-cursor.execute(
-"SELECT expires_at FROM users "
-"WHERE user_id = ?",
-(user_id,)
-)
+cursor.execute("SELECT expires_at FROM users WHERE user_id = ?", (user_id,))
 res = cursor.fetchone()
 conn.close()
 if res and res[0]:
 curr = datetime.date.today()
-exp = datetime.datetime.strptime(
-res[0], "%Y-%m-%d"
-).date()
+exp = datetime.datetime.strptime(res[0], "%Y-%m-%d").date()
 if exp >= curr:
 rem = (exp - curr).days
-return (
-f"🟢 Активна\n"
-f"📅 До: {res[0]}\n"
-f"⏳ Осталось: {rem} дн."
-)
+return f"🟢 Активна\n📅 До: {res[0]}\n⏳ Осталось: {rem} дн."
 return "🔴 Не активна"
 def check_trial(user_id):
 conn = sqlite3.connect("vpn_users.db")
 cursor = conn.cursor()
-cursor.execute(
-"SELECT has_trial FROM users "
-"WHERE user_id = ?",
-(user_id,)
-)
+cursor.execute("SELECT has_trial FROM users WHERE user_id = ?", (user_id,))
 res = cursor.fetchone()
 conn.close()
 if res:
@@ -97,27 +65,18 @@ return 0
 def set_trial_used(user_id):
 conn = sqlite3.connect("vpn_users.db")
 cursor = conn.cursor()
-cursor.execute(
-"UPDATE users SET has_trial = 1 "
-"WHERE user_id = ?",
-(user_id,)
-)
+cursor.execute("UPDATE users SET has_trial = 1 WHERE user_id = ?", (user_id,))
 conn.commit()
 conn.close()
 def get_total_users():
 conn = sqlite3.connect("vpn_users.db")
 cursor = conn.cursor()
-cursor.execute(
-"SELECT COUNT() FROM users"
-)
-total = cursor.fetchone()[0]
-cursor.execute(
-"SELECT COUNT() FROM users "
-"WHERE has_trial = 1"
-)
-trials = cursor.fetchone()[0]
+cursor.execute("SELECT COUNT() FROM users")
+total = cursor.fetchone()
+cursor.execute("SELECT COUNT() FROM users WHERE has_trial = 1")
+trials = cursor.fetchone()
 conn.close()
-return total, trials
+return total[0], trials[0]
 def get_happ_config():
 try:
 url = "vpngate.net"
@@ -125,9 +84,7 @@ resp = requests.get(url, timeout=10)
 lines = resp.text.split("\n")
 ips = []
 for line in lines:
-if (line.startswith("*") or
-line.startswith("#") or
-not line.strip()):
+if line.startswith("*") or line.startswith("#") or not line.strip():
 continue
 p = line.split(",")
 if len(p) > 7:
@@ -136,18 +93,14 @@ if ips:
 ch = random.choice(ips)
 f_pass = "password123"
 m = "chacha20-ietf-poly1305:" + f_pass
-b64 = base64.b64encode(
-m.encode("utf-8")
-).decode("utf-8")
+b64 = base64.b64encode(m.encode("utf-8")).decode("utf-8")
 key = f"ss://{b64}@{ch[0]}:{ch[1]}#DoorVPN"
 return key, ch[2]
 except Exception as e:
 print(f"Ошибка: {e}")
 return None, None
 def get_main_keyboard(user_id):
-markup = types.ReplyKeyboardMarkup(
-resize_keyboard=True
-)
+markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
 b1 = types.KeyboardButton("📊 Тарифы и Оплата")
 b2 = types.KeyboardButton("📌 Моя подписка")
 b3 = types.KeyboardButton("👥 Пригласить друга")
@@ -174,54 +127,23 @@ except ValueError:
 pass
 conn = sqlite3.connect("vpn_users.db")
 cursor = conn.cursor()
-cursor.execute(
-"SELECT user_id FROM users "
-"WHERE user_id = ?",
-(uid,)
-)
+cursor.execute("SELECT user_id FROM users WHERE user_id = ?", (uid,))
 exists = cursor.fetchone()
 if not exists:
-cursor.execute(
-"INSERT INTO users "
-"(user_id, referred_by) "
-"VALUES (?, ?)",
-(uid, ref_id)
-)
+cursor.execute("INSERT INTO users (user_id, referred_by) VALUES (?, ?)", (uid, ref_id))
 conn.commit()
 if ref_id:
 add_user_days(ref_id, 1)
 try:
-bot.send_message(
-ref_id,
-"🎉 По вашей ссылке зашел друг! "
-"Вам начислен 1 день подписки.",
-parse_mode="Markdown"
-)
+bot.send_message(ref_id, "🎉 По вашей ссылке зашел друг! Вам начислен 1 день подписки.", parse_mode="Markdown")
 except Exception:
 pass
 conn.close()
-w_text = (
-f"👋 Привет, {message.from_user.first_name}! "
-f"Добро пожаловать в Door VPN.\n\n"
-f"🛡 Премиум-сервис нового поколения. "
-f"Мы обеспечиваем скорость и защиту.\n\n"
-f"Управляйте подпиской через меню 👇"
-)
+w_text = f"👋 Привет, {message.from_user.first_name}! Добро пожаловать в Door VPN.\n\n🛡 Премиум-сервис нового поколения. Мы обеспечиваем скорость и защиту.\n\nУправляйте подпиской через меню 👇"
 try:
-bot.send_photo(
-message.chat.id,
-IMAGE_URL,
-caption=w_text,
-reply_markup=get_main_keyboard(uid),
-parse_mode="Markdown"
-)
+bot.send_photo(message.chat.id, IMAGE_URL, caption=w_text, reply_markup=get_main_keyboard(uid), parse_mode="Markdown")
 except Exception:
-bot.send_message(
-message.chat.id,
-w_text,
-reply_markup=get_main_keyboard(uid),
-parse_mode="Markdown"
-)
+bot.send_message(message.chat.id, w_text, reply_markup=get_main_keyboard(uid), parse_mode="Markdown")
 @bot.message_handler(content_types=["text"])
 def handle_text(message):
 uid = message.from_user.id
