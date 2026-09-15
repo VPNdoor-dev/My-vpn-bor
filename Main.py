@@ -27,23 +27,26 @@ def get_total_users():
  conn = sqlite3.connect(DB); cur = conn.cursor(); cur.execute("SELECT COUNT(*) FROM users"); tot = cur.fetchone()
  cur.execute("SELECT COUNT(*) FROM users WHERE has_trial = 1"); tr = cur.fetchone(); conn.close(); return tot, tr
 def check_trial(uid):
- conn = sqlite3.connect(DB); cur = conn.cursor(); cur.execute("SELECT has_trial FROM users WHERE user_id = ?", (uid,)); res = cur.fetchone(); conn.close(); return res if res else 0
+ conn = sqlite3.connect(DB); cur = conn.cursor(); cur.execute("SELECT has_trial FROM users WHERE user_id = ?", (uid,)); res = cur.fetchone(); conn.close(); return res[0] if res else 0
 def set_trial_used(uid):
  conn = sqlite3.connect(DB); cur = conn.cursor(); cur.execute("UPDATE users SET has_trial = 1 WHERE user_id = ?", (uid,)); conn.commit(); conn.close()
 def add_user_days(uid, days):
- conn = sqlite3.connect(DB); cur = conn.cursor(); cur.execute("SELECT expires_at FROM users WHERE user_id = ?", (uid,)); res = cur.fetchone(); td = datetime.date.today()
- if res and res:
-  try: base = datetime.datetime.strptime(res, "%Y-%m-%d").date(); base = base if base >= td else td
+ conn = sqlite3.connect(DB); cur = conn.cursor()
+ cur.execute("INSERT OR IGNORE INTO users (user_id, has_trial, expires_at) VALUES (?, 0, '')", (uid,))
+ cur.execute("SELECT expires_at FROM users WHERE user_id = ?", (uid,)); res = cur.fetchone(); td = datetime.date.today()
+ if res and res[0]:
+  try: base = datetime.datetime.strptime(res[0], "%Y-%m-%d").date(); base = base if base >= td else td
   except: base = td
  else: base = td
  n_exp_str = (base + datetime.timedelta(days=days)).strftime("%Y-%m-%d")
- cur.execute("INSERT OR REPLACE INTO users (user_id, expires_at) VALUES (?, ?)", (uid, n_exp_str)); conn.commit(); conn.close(); return n_exp_str
+ cur.execute("UPDATE users SET expires_at = ? WHERE user_id = ?", (n_exp_str, uid))
+ conn.commit(); conn.close(); return n_exp_str
 def check_user_status(uid):
  conn = sqlite3.connect(DB); cur = conn.cursor(); cur.execute("SELECT expires_at FROM users WHERE user_id = ?", (uid,)); res = cur.fetchone(); conn.close()
- if res and res:
+ if res and res[0]:
   try:
-   exp = datetime.datetime.strptime(res, "%Y-%m-%d").date()
-   if exp >= datetime.date.today(): return f"🟢 Активна\n📅 До: {res}\n⏳ Осталось: {(exp - datetime.date.today()).days} дн."
+   exp = datetime.datetime.strptime(res[0], "%Y-%m-%d").date()
+   if exp >= datetime.date.today(): return f"🟢 Активна\n📅 До: {res[0]}\n⏳ Осталось: {(exp - datetime.date.today()).days} дн."
   except: pass
  return "🔴 Не активна"
 def get_main_keyboard(uid):
@@ -55,11 +58,15 @@ def get_happ_config():
   resp = requests.get("http://vpngate.net", timeout=(4, 5)); lines = resp.text.split("\n"); ips = []
   for line in lines:
    if line.strip() and not line.startswith("*") and not line.startswith("#") and "vpn" in line:
-    p = line.split(","); ips.append((p[1], p[6]))
-  if ips: ip, country = random.choice(ips); b64 = base64.b64encode(b"chacha20-ietf-poly1305:password123").decode("utf-8"); return f"ss://{b64}@{ip}:443#DoorVPN-{country}", country
+    p = line.split(",")
+    if len(p) > 6: ips.append((p[1], p[6]))
+  if ips:
+   ip, country = random.choice(ips)
+   b64 = base64.b64encode(b"chacha20-ietf-poly1305:password123").decode("utf-8")
+   return f"ss://{b64}@{ip}:443#DoorVPN-{country}", country
  except Exception as e: print(f"Ошибка API: {e}")
  return None, None
-@bot.message_handler(commands=["start"])
+ @bot.message_handler(commands=["start"])
 def start(m):
  uid = m.from_user.id; p = m.text.split(); ref_id = int(p[1]) if len(p) > 1 and p[1].isdigit() and int(p[1]) != uid else None
  conn = sqlite3.connect(DB); cursor = conn.cursor(); cursor.execute("SELECT user_id FROM users WHERE user_id = ?", (uid,)); ex = cursor.fetchone()
@@ -116,7 +123,6 @@ def payment_cb(call):
   return
  method, tariff = parts[1], parts[2]; t_map = {"1m": ("1 мес", 50, "50 руб", 30), "3m": ("3 мес", 85, "85 руб", 90), "6m": ("6 мес", 150, "150 руб", 180), "1y": ("1 год", 250, "250 руб", 365), "inf": ("Навсегда", 500, "500 руб", 9999)}; name, star_p, rub_text, d = t_map[tariff]
  if method == "stars": prices = [types.LabeledPrice(label="Stars", amount=star_p)]; bot.send_invoice(call.message.chat.id, title=f"Door VPN — {name}", description="Премиум Happ", invoice_payload=f"vpn_{d}", provider_token="", currency="XTR", prices=prices, start_parameter="vpn-sub")
-  # Твоя рабочая личная ссылка Т-Банка на оплату для Артема:
  elif method == "manual": link = "https://tbank.ru"; text = f"💳 **Покупка тарифа {name}**\nСтоимость: `{rub_text}`\n\n1️⃣ Нажми на ссылку для оплаты:\n{link}\n\n2️⃣ Переведи `{rub_text}`\n3️⃣ Отправь чек в тех. поддержку: @{ADMIN_USER}\n\nАдминистратор проверит баланс и выдаст ключ! 🚀"; bot.send_message(call.message.chat.id, text, parse_mode="Markdown", disable_web_page_preview=True)
 @bot.pre_checkout_query_handler(func=lambda query: True)
 def precheck(q): bot.answer_pre_checkout_query(q.id, ok=True)
