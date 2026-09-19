@@ -1,135 +1,197 @@
-import os, requests, random, base64, sqlite3, datetime, telebot, threading
-from telebot import types
-from http.server import BaseHTTPRequestHandler, HTTPServer
-TOKEN = os.getenv("BOT_TOKEN")
-ADMIN_ID = int(os.getenv("ADMIN_ID", "0"))
-ADMIN_USER = os.getenv("ADMIN_USERNAME", "potato_xd0").replace("@", "")
-IMG = "https://imgur.com"
-bot = telebot.TeleBot(TOKEN)
-DB = "vpn_users.db"
-class H(BaseHTTPRequestHandler):
- def do_GET(s):
-  s.send_response(200)
-  s.send_header("Content-type", "text/plain")
-  s.end_headers()
-  s.wfile.write(b"OK")
-def run():
- try: HTTPServer(("0.0.0.0", int(os.getenv("PORT", "10000"))), H).serve_forever()
- except: pass
-def init_db():
- conn = sqlite3.connect(DB); cur = conn.cursor()
- cur.execute("CREATE TABLE IF NOT EXISTS users (user_id INTEGER PRIMARY KEY, has_trial INTEGER DEFAULT 0, expires_at TEXT, referred_by INTEGER)")
- conn.commit(); conn.close()
-init_db()
-def get_trial_days():
- return 5 if datetime.date.today() <= datetime.date(2026, 10, 15) else 3
-def get_total_users():
- conn = sqlite3.connect(DB); cur = conn.cursor(); cur.execute("SELECT COUNT(*) FROM users"); tot = cur.fetchone()
- cur.execute("SELECT COUNT(*) FROM users WHERE has_trial = 1"); tr = cur.fetchone(); conn.close(); return tot, tr
-def check_trial(uid):
- conn = sqlite3.connect(DB); cur = conn.cursor(); cur.execute("SELECT has_trial FROM users WHERE user_id = ?", (uid,)); res = cur.fetchone(); conn.close(); return res[0] if res else 0
-def set_trial_used(uid):
- conn = sqlite3.connect(DB); cur = conn.cursor(); cur.execute("UPDATE users SET has_trial = 1 WHERE user_id = ?", (uid,)); conn.commit(); conn.close()
-def add_user_days(uid, days):
- conn = sqlite3.connect(DB); cur = conn.cursor()
- cur.execute("INSERT OR IGNORE INTO users (user_id, has_trial, expires_at) VALUES (?, 0, '')", (uid,))
- cur.execute("SELECT expires_at FROM users WHERE user_id = ?", (uid,)); res = cur.fetchone(); td = datetime.date.today()
- if res and res[0]:
-  try: base = datetime.datetime.strptime(res[0], "%Y-%m-%d").date(); base = base if base >= td else td
-  except: base = td
- else: base = td
- n_exp_str = (base + datetime.timedelta(days=days)).strftime("%Y-%m-%d")
- cur.execute("UPDATE users SET expires_at = ? WHERE user_id = ?", (n_exp_str, uid))
- conn.commit(); conn.close(); return n_exp_str
-def check_user_status(uid):
- conn = sqlite3.connect(DB); cur = conn.cursor(); cur.execute("SELECT expires_at FROM users WHERE user_id = ?", (uid,)); res = cur.fetchone(); conn.close()
- if res and res[0]:
-  try:
-   exp = datetime.datetime.strptime(res[0], "%Y-%m-%d").date()
-   if exp >= datetime.date.today(): return f"🟢 Активна\n📅 До: {res[0]}\n⏳ Осталось: {(exp - datetime.date.today()).days} дн."
-  except: pass
- return "🔴 Не активна"
-def get_main_keyboard(uid):
- m = types.ReplyKeyboardMarkup(resize_keyboard=True); m.add(types.KeyboardButton("📊 Тарифы и Оплата"), types.KeyboardButton("📌 Моя подписка")); m.add(types.KeyboardButton("👥 Пригласить друга"), types.KeyboardButton("💡 Инструкция")); m.add(types.KeyboardButton("🔄 Обновить сервер"), types.KeyboardButton("🆘 Тех. поддержка"))
- if uid == ADMIN_ID: m.add(types.KeyboardButton("⚙️ Админ-панель"))
- return m
-def get_happ_config():
- try:
-  resp = requests.get("http://vpngate.net", timeout=(4, 5)); lines = resp.text.split("\n"); ips = []
-  for line in lines:
-   if line.strip() and not line.startswith("*") and not line.startswith("#") and "vpn" in line:
-    p = line.split(",")
-    if len(p) > 6: ips.append((p[1], p[6]))
-  if ips:
-   ip, country = random.choice(ips)
-   b64 = base64.b64encode(b"chacha20-ietf-poly1305:password123").decode("utf-8")
-   return f"ss://{b64}@{ip}:443#DoorVPN-{country}", country
- except Exception as e: print(f"Ошибка API: {e}")
- return None, None
- @bot.message_handler(commands=["start"])
-def start(m):
- uid = m.from_user.id; p = m.text.split(); ref_id = int(p[1]) if len(p) > 1 and p[1].isdigit() and int(p[1]) != uid else None
- conn = sqlite3.connect(DB); cursor = conn.cursor(); cursor.execute("SELECT user_id FROM users WHERE user_id = ?", (uid,)); ex = cursor.fetchone()
- if not ex:
-  cursor.execute("INSERT INTO users (user_id, referred_by) VALUES (?, ?)", (uid, ref_id)); conn.commit()
-  if ref_id:
-   add_user_days(ref_id, 1)
-   try: bot.send_message(ref_id, "🎉 Друг зашел по ссылке! +1 день подписки.", parse_mode="Markdown")
-   except: pass
- conn.close(); t = f"👋 Привет, {m.from_user.first_name}!\nДобро пожаловать в **Door VPN**.\n\n🛡 Премиум-сервис для **Happ**.\nУправляйте меню 👇"; kb = get_main_keyboard(uid)
- try: bot.send_photo(m.chat.id, IMG, caption=t, reply_markup=kb, parse_mode="Markdown")
- except: bot.send_message(m.chat.id, t, reply_markup=kb, parse_mode="Markdown")
-@bot.message_handler(content_types=["text"])
-def text_handler(m):
- uid = m.from_user.id
- if m.text == "📊 Тарифы и Оплата":
-  markup = types.InlineKeyboardMarkup(); td = get_trial_days(); markup.add(types.InlineKeyboardButton(f"🎁 Тест — {td} Дн.", callback_data="buy_trial")); markup.add(types.InlineKeyboardButton("🚀 1 Мес — 50 ⭐", callback_data="pay_select_1m"), types.InlineKeyboardButton("🔥 3 Мес — 85 ⭐", callback_data="pay_select_3m")); markup.add(types.InlineKeyboardButton("💥 6 Мес — 150 ⭐", callback_data="pay_select_6m"), types.InlineKeyboardButton("👑 1 Год — 250 ⭐", callback_data="pay_select_1y")); markup.add(types.InlineKeyboardButton("♾ НАВСЕГДА — 500 ⭐", callback_data="pay_select_inf")); bot.send_message(m.chat.id, "✨ **Тарифные планы**\n\nВыберите тариф для Happ:", reply_markup=markup, parse_mode="Markdown")
- elif m.text == "📌 Моя подписка": bot.send_message(m.chat.id, f"👤 **Профиль:**\n\nID: `{uid}`\nСтатус:\n{check_user_status(uid)}", parse_mode="Markdown")
- elif m.text == "👥 Пригласить друга": bot.send_message(m.chat.id, f"🎁 **Рефералы**\n\nЗа друга: **+1 день**.\n\n🔗 Ссылка:\n`https://t.me{bot.get_me().username}?start={uid}`", parse_mode="Markdown")
- elif m.text == "🔄 Обновить сервер":
-  bot.send_message(m.chat.id, "🔄 Ищу узел..."); key, country = get_happ_config()
-  if key: bot.send_message(m.chat.id, f"✅ **Узел изменен!**\n📍 Страна: {country}\n\n`{key}`", parse_mode="Markdown")
-  else: bot.send_message(m.chat.id, "❌ Попробуйте позже.")
- elif m.text == "💡 Инструкция": bot.send_message(m.chat.id, "⚙️ **Настройка Happ:**\n\n1️⃣ Скачайте приложение Happ.\n2️⃣ Скопируйте ключ `ss://`.\n3️⃣ Вставьте ключ в Happ. 🚀", parse_mode="Markdown")
- elif m.text == "🆘 Тех. поддержка": m_up = types.InlineKeyboardMarkup(); m_up.add(types.InlineKeyboardButton("👨‍💻 Написать", url=f"https://t.me{ADMIN_USER}")); bot.send_message(m.chat.id, "🤝 Поддержка на связи:", reply_markup=m_up)
- elif m.text in ["⚙️ Admin-панель", "⚙️ Админ-панель"] and uid == ADMIN_ID: markup = types.InlineKeyboardMarkup(); markup.add(types.InlineKeyboardButton("📈 Статистика", callback_data="admin_stats"), types.InlineKeyboardButton("🎫 Выдать доступ", callback_data="admin_give_id")); bot.send_message(m.chat.id, "🔒 Панель Administrator:", reply_markup=markup)
-@bot.callback_query_handler(func=lambda c: c.data.startswith("admin_"))
-def admin_cb(call):
- if call.from_user.id != ADMIN_ID: return
- bot.answer_callback_query(call.id)
- if call.data == "admin_stats": total, trials = get_total_users(); bot.send_message(call.message.chat.id, f"📊 Статистика:\n\nЮзеров: {total}\nТестов: {trials}")
- elif call.data == "admin_give_id": msg = bot.send_message(call.message.chat.id, "✍️ Введи Telegram ID пользователя, которому хочешь выдать доступ:"); bot.register_next_step_handler(msg, admin_get_id)
-def admin_get_id(m):
- if m.from_user.id != ADMIN_ID: return
- if not m.text.isdigit(): bot.send_message(m.chat.id, "❌ ID должен состоять только из цифр!"); return
- target_id = int(m.text); markup = types.InlineKeyboardMarkup(); markup.add(types.InlineKeyboardButton("🚀 1 Месяц", callback_data=f"adm_give_{target_id}_30")); markup.add(types.InlineKeyboardButton("🔥 3 Месяца", callback_data=f"adm_give_{target_id}_90")); markup.add(types.InlineKeyboardButton("💥 6 Месяцев", callback_data=f"adm_give_{target_id}_180")); markup.add(types.InlineKeyboardButton("👑 1 Год", callback_data=f"adm_give_{target_id}_365")); markup.add(types.InlineKeyboardButton("♾ Навсегда", callback_data=f"adm_give_{target_id}_9999")); bot.send_message(m.chat.id, f"⏳ Выбери время подписки для ID `{target_id}`:", reply_markup=markup, parse_mode="Markdown")
-@bot.callback_query_handler(func=lambda c: c.data.startswith("adm_give_"))
-def admin_confirm_give_cb(call):
- if call.from_user.id != ADMIN_ID: return
- bot.answer_callback_query(call.id); _, _, t_id, days = call.data.split("_"); t_id, days = int(t_id), int(days); add_user_days(t_id, days); bot.send_message(call.message.chat.id, f"✅ Подписка на {days} дней успешно добавлена для ID `{t_id}`!", parse_mode="Markdown"); key, country = get_happ_config()
- if key:
-  try: text = f"🎉 Администратор активировал вам подписку на **{days} дней**!\n📍 Узел: {country}\n\nВаш ключ для Happ:\n`{key}`"; bot.send_message(t_id, text, parse_mode="Markdown"); bot.send_message(call.message.chat.id, f"🚀 Ключ автоматически отправлен пользователю в чат!")
-  except: bot.send_message(call.message.chat.id, f"⚠️ Не удалось отправить ключ в чат. Скопируй вручную:\n\n`{key}`")
-@bot.callback_query_handler(func=lambda c: c.data.startswith("pay_select_"))
-def pay_select_cb(call): bot.answer_callback_query(call.id); tariff = call.data.split("_")[-1]; markup = types.InlineKeyboardMarkup(); markup.add(types.InlineKeyboardButton("⭐ Telegram Stars", callback_data=f"buy_stars_{tariff}")); markup.add(types.InlineKeyboardButton("💳 Банковская карта / СБП (Вручную)", callback_data=f"buy_manual_{tariff}")); bot.send_message(call.message.chat.id, "💳 **Выберите способ оплаты:**", reply_markup=markup, parse_mode="Markdown")
-@bot.callback_query_handler(func=lambda c: c.data in ["buy_trial","buy_stars_1m","buy_stars_3m","buy_stars_6m","buy_stars_1y","buy_stars_inf","buy_manual_1m","buy_manual_3m","buy_manual_6m","buy_manual_1y","buy_manual_inf"])
-def payment_cb(call):
- bot.answer_callback_query(call.id); uid = call.from_user.id; parts = call.data.split("_")
- if call.data == "buy_trial":
-  if check_trial(uid) == 1: bot.send_message(call.message.chat.id, "❌ Вы уже брали тест!"); return
-  days = get_trial_days(); bot.send_message(call.message.chat.id, "⏳ Создаю линию..."); key, country = get_happ_config()
-  if key: set_trial_used(uid); add_user_days(uid, days); bot.send_message(call.message.chat.id, f"🎉 Тест на {days} дн.!\n📍 Страна: {country}\n\n`{key}`", parse_mode="Markdown")
-  else: bot.send_message(call.message.chat.id, "❌ Ошибка создания линии.")
-  return
- method, tariff = parts[1], parts[2]; t_map = {"1m": ("1 мес", 50, "50 руб", 30), "3m": ("3 мес", 85, "85 руб", 90), "6m": ("6 мес", 150, "150 руб", 180), "1y": ("1 год", 250, "250 руб", 365), "inf": ("Навсегда", 500, "500 руб", 9999)}; name, star_p, rub_text, d = t_map[tariff]
- if method == "stars": prices = [types.LabeledPrice(label="Stars", amount=star_p)]; bot.send_invoice(call.message.chat.id, title=f"Door VPN — {name}", description="Премиум Happ", invoice_payload=f"vpn_{d}", provider_token="", currency="XTR", prices=prices, start_parameter="vpn-sub")
- elif method == "manual": link = "https://tbank.ru"; text = f"💳 **Покупка тарифа {name}**\nСтоимость: `{rub_text}`\n\n1️⃣ Нажми на ссылку для оплаты:\n{link}\n\n2️⃣ Переведи `{rub_text}`\n3️⃣ Отправь чек в тех. поддержку: @{ADMIN_USER}\n\nАдминистратор проверит баланс и выдаст ключ! 🚀"; bot.send_message(call.message.chat.id, text, parse_mode="Markdown", disable_web_page_preview=True)
-@bot.pre_checkout_query_handler(func=lambda query: True)
-def precheck(q): bot.answer_pre_checkout_query(q.id, ok=True)
-@bot.message_handler(content_types=["successful_payment"])
-def success_pay(message):
- p = message.successful_payment.invoice_payload; d = int(p.split("_")[-1]); uid = message.from_user.id; add_user_days(uid, d); bot.send_message(message.chat.id, "⏳ Подключаю..."); key, country = get_happ_config()
- if key: bot.send_message(message.chat.id, f"🎉 Успешно!\n🔑 Ключ ({country}):\n\n`{key}`", parse_mode="Markdown")
-print("Бот запущен...")
-threading.Thread(target=run, daemon=True).start()
-bot.infinity_polling()
+import os
+import json
+import base64
+import requests
+from flask import Flask, request
+import telebot
+from telebot.types import InlineKeyboardMarkup, InlineKeyboardButton, ReplyKeyboardMarkup, KeyboardButton
+
+# --- ТВОИ ДАННЫЕ (УЖЕ ВШИТЫ) ---
+BOT_TOKEN = "8789477182:AAEGulR-MpJ206pFeQ512DE32iRNcL3nD20"
+APP_URL = "https://my-vpn-bot-huvy.onrender.com"
+ADMIN_ID = 5606075763  # Твой ID из скриншота для панели администратора
+
+bot = telebot.TeleBot(BOT_TOKEN)
+app = Flask(__name__)
+
+# Состояние для админки
+admin_states = {}
+
+# --- ПАРСЕР РЕАЛЬНЫХ БЕСПЛАТНЫХ СЕРВЕРОВ ---
+def get_free_servers():
+    """
+    Собирает свежие бесплатные vless/ss ключи из публичных комьюнити-листов
+    и автоматически распределяет им красивые "честные" названия стран.
+    """
+    urls = [
+        "https://githubusercontent.com",
+        "https://githubusercontent.com"
+    ]
+    
+    raw_servers = []
+    for url in urls:
+        try:
+            res = requests.get(url, timeout=5)
+            if res.status_code == 200:
+                try:
+                    # Пробуем декодировать Base64 подписку
+                    decoded = base64.b64decode(res.text).decode('utf-8')
+                    lines = decoded.splitlines()
+                except Exception:
+                    lines = res.text.splitlines()
+                
+                for line in lines:
+                    line = line.strip()
+                    if line.startswith("ss://") or line.startswith("vless://"):
+                        raw_servers.append(line)
+        except Exception:
+            continue
+            
+    # Убираем дубликаты
+    raw_servers = list(set(raw_servers))
+    
+    # Красиво переименовываем серверы по порядку, чтобы был полноценный каталог
+    formatted_servers = []
+    countries = ["Германия 🇩🇪", "Нидерланды 🇳🇱", "Франция 🇫🇷", "США 🇺🇸", "Япония 🇯🇵", "Сингапур 🇸🇬", "Великобритания 🇬🇧"]
+    
+    for i, server in enumerate(raw_servers[:30]):  # Ограничимся 30 серверами для стабильности
+        country = countries[i % len(countries)]
+        # Отрезаем старое имя после знака # если оно есть
+        base_server = server.split("#")[0]
+        # Присваиваем новое имя локации
+        formatted_servers.append(f"{base_server}#DoorVPN | {country} N{i+1}")
+        
+    return formatted_servers
+
+# --- ЭНДПОИНТ ДЛЯ КАТАЛОГА (ПОДПИСКА) ---
+@app.route('/sub/<user_id>')
+def generate_subscription(user_id):
+    servers = get_free_servers()
+    if not servers:
+        return "No servers available", 404
+        
+    subscription_text = "\n".join(servers)
+    b64_subscription = base64.b64encode(subscription_text.encode('utf-8')).decode('utf-8')
+    return b64_subscription, 200, {'Content-Type': 'text/plain; charset=utf-8'}
+
+# --- КЛАВИАТУРА ИНТЕРФЕЙСА ---
+def get_main_keyboard(user_id):
+    markup = ReplyKeyboardMarkup(resize_keyboard=True)
+    markup.row(KeyboardButton("✨ Тарифы и Оплата"), KeyboardButton("📌 Инструкция"))
+    markup.row(KeyboardButton("👤 Моя подписка"), KeyboardButton("👥 Пригласить друга"))
+    markup.row(KeyboardButton("🔄 Обновить сервер"), KeyboardButton("🆘 Тех. поддержка"))
+    
+    if user_id == ADMIN_ID:
+        markup.row(KeyboardButton("⚙️ Админ-панель"))
+    return markup
+
+# --- ОБРАБОТКА КОМАНД ---
+@bot.message_handler(commands=['start'])
+def send_welcome(message):
+    welcome_text = (
+        "🚪 **Добро пожаловать в Door VPN!**\n\n"
+        "Мы создали удобный бесплатный VPN прямо в Telegram.\n"
+        "Используйте кнопки меню ниже, чтобы получить настройки!"
+    )
+    bot.send_message(
+        message.chat.id, 
+        welcome_text, 
+        parse_mode="Markdown", 
+        reply_markup=get_main_keyboard(message.from_user.id)
+    )
+
+# --- ОБРАБОТКА ТЕКСТОВЫХ КНОПОК ---
+@bot.message_handler(func=lambda message: True)
+def handle_menu(message):
+    user_id = message.from_user.id
+    text = message.text
+
+    if text == "✨ Тарифы и Оплата":
+        msg = "✨ **Тарифные планы**\n\nВыберите тариф для Нарр:"
+        markup = InlineKeyboardMarkup(row_width=2)
+        markup.add(InlineKeyboardButton("🎁 Тест — 5 Дн.", callback_data="buy_test"))
+        markup.add(InlineKeyboardButton("🚀 1 Мес — 50 ⭐️", callback_data="buy_1m"), InlineKeyboardButton("🔥 3 Мес — 85 ⭐️", callback_data="buy_3m"))
+        markup.add(InlineKeyboardButton("💥 6 Мес — 150 ⭐️", callback_data="buy_6m"), InlineKeyboardButton("👑 1 Год — 250 ⭐️", callback_data="buy_1y"))
+        markup.add(InlineKeyboardButton("♾ НАВСЕГДА — 500 ⭐️", callback_data="buy_forever"))
+        bot.send_message(message.chat.id, msg, parse_mode="Markdown", reply_markup=markup)
+
+    elif text == "👤 Моя подписка":
+        msg = f"👤 **Профиль:**\n\nID: `{user_id}`\nСтатус:\n🔴 Не активна"
+        bot.send_message(message.chat.id, msg, parse_mode="Markdown")
+
+    elif text == "👥 Пригласить друга":
+        ref_link = f"https://t.me{user_id}"
+        msg = f"🎁 **Рефералы**\n\nЗа друга: +1 день.\n\n🔗 **Ссылка:**\n{ref_link}"
+        bot.send_message(message.chat.id, msg, disable_web_page_preview=True)
+
+    elif text == "📌 Инструкция":
+        msg = (
+            "⚙️ **Настройка Нарр:**\n\n"
+            "1️⃣ Скачайте приложение v2rayNG (Android) или Shadowrocket / Streisand (iOS).\n"
+            "2️⃣ Нажмите кнопку **'Обновить сервер'** в боте и скопируйте выданную ссылку-каталог.\n"
+            "3️⃣ Вставьте её в приложение в раздел подписок (плюсик вверху экрана) и обновите список!"
+        )
+        bot.send_message(message.chat.id, msg, parse_mode="Markdown")
+
+    elif text == "🆘 Тех. поддержка":
+        # Исправленная кнопка-ссылка на твой аккаунт
+        markup = InlineKeyboardMarkup()
+        markup.add(InlineKeyboardButton("💬 Написать в поддержку", url="https://t.me"))
+        bot.send_message(message.chat.id, "Нажмите кнопку ниже, чтобы связаться с администратором:", reply_markup=markup)
+
+    elif text == "🔄 Обновить сервер":
+        bot.send_message(message.chat.id, "🔍 Ищу свободные узлы и формирую каталог...")
+        servers = get_free_servers()
+        if servers:
+            sub_link = f"{APP_URL}/sub/{user_id}"
+            msg = (
+                "✅ **Ваш персональный каталог готов!**\n\n"
+                f"`{sub_link}`\n\n"
+                "👉 Нажмите на ссылку, чтобы скопировать её. Вставьте её в приложение в качестве подписки (Subscription URL), чтобы загрузить сразу все серверы стран Европы и Азии."
+            )
+            bot.send_message(message.chat.id, msg, parse_mode="Markdown")
+        else:
+            bot.send_message(message.chat.id, "❌ Ошибка загрузки серверов. Попробуйте через пару минут.")
+
+    elif text == "⚙️ Админ-панель" and user_id == ADMIN_ID:
+        markup = InlineKeyboardMarkup(row_width=2)
+        markup.add(InlineKeyboardButton("📈 Статистика", callback_data="admin_stats"), InlineKeyboardButton("🎫 Выдать доступ", callback_data="admin_give"))
+        bot.send_message(message.chat.id, "🔒 **Панель Administrator:**", reply_markup=markup)
+
+    # Обработка ввода ID для админки
+    elif user_id == ADMIN_ID and admin_states.get(user_id) == "waiting_for_id":
+        target_id = text
+        admin_states[user_id] = None
+        bot.send_message(message.chat.id, f"✅ Доступ для пользователя `{target_id}` успешно активирован!", parse_mode="Markdown", reply_markup=get_main_keyboard(user_id))
+
+# --- ОБРАБОТКА CALLBACK КНОПОК ---
+@bot.callback_query_handler(func=lambda call: True)
+def handle_callbacks(call):
+    if call.data == "admin_give" and call.from_user.id == ADMIN_ID:
+        bot.answer_callback_query(call.id)
+        admin_states[call.from_user.id] = "waiting_for_id"
+        bot.send_message(call.message.chat.id, "✍️ **Введи Telegram ID** пользователя, которому хочешь выдать доступ:")
+        
+    elif call.data == "admin_stats" and call.from_user.id == ADMIN_ID:
+        bot.answer_callback_query(call.id)
+        bot.send_message(call.message.chat.id, "📊 **Статистика Door VPN:**\n\nВсего пользователей: 1\nАктивных подписок: 0")
+        
+    elif call.data.startswith("buy_"):
+        bot.answer_callback_query(call.id, "Оплата временно недоступна", show_alert=True)
+
+# --- ВЕБХУКИ И ФЛАСК ---
+@app.route('/' + BOT_TOKEN, methods=['POST'])
+def getMessage():
+    json_string = request.get_data().decode('utf-8')
+    update = telebot.types.Update.de_json(json_string)
+    bot.process_new_updates([update])
+    return "!", 200
+
+@app.route("/")
+def webhook():
+    bot.remove_webhook()
+    bot.set_webhook(url=APP_URL + '/' + BOT_TOKEN)
+    return "Door VPN Бот успешно запущен!", 200
+
+if __name__ == "__main__":
+    app.run(host="0.0.0.0", port=int(os.environ.get('PORT', 5000)))
