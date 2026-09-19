@@ -9,7 +9,7 @@ from telebot.types import (
     ReplyKeyboardMarkup, 
     KeyboardButton
 )
-from vpn_core import load_db, save_db, init_user, get_free_servers
+from Vpn_core import load_db, save_db, init_user, get_free_servers
 
 BOT_TOKEN = "8789477182:AAEGulR-MpJ206pFeQ512DE32iRNcL3nD20"
 APP_URL = "https://onrender.com"
