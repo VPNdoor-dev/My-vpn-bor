@@ -2,7 +2,7 @@ import os, base64, telebot
 from datetime import datetime
 from flask import Flask, request
 from telebot.types import InlineKeyboardMarkup, InlineKeyboardButton, ReplyKeyboardMarkup, KeyboardButton
-from vpn_core import load_db, save_db, init_user, get_free_servers
+from vpn_core import load_db, save_db, init_user, get_free_servers, find_user_by_input
 
 BOT_TOKEN = "8789477182:AAEGulR-MpJ206pFeQ512DE32iRNcL3nD20"
 APP_URL = "https://onrender.com"
@@ -15,47 +15,55 @@ admin_states = {}
 
 @app.route('/sub/<user_id>')
 def generate_subscription(user_id):
-    user_data = load_db()["users"].get(str(user_id))
-    if not user_data or user_data["status"] == "🔴 Не активна":
-        return "Нет активной подписки!", 403
+    db = load_db()
+    if str(user_id) in db.get("banned", []): return "Вы забанены!", 403
+    user_data = db["users"].get(str(user_id))
+    if not user_data or user_data["status"] == "🔴 Не активна": return "Нет подписки!", 403
     servers = get_free_servers()
-    if not servers: return "Серверы недоступны", 404
-    b64_sub = base64.b64encode("\n".join(servers).encode('utf-8')).decode('utf-8')
-    return b64_sub, 200, {'Content-Type': 'text/plain; charset=utf-8'}
+    if not servers: return "Ошибка серверов", 404
+    return base64.b64encode("\n".join(servers).encode('utf-8')).decode('utf-8'), 200, {'Content-Type': 'text/plain; charset=utf-8'}
 
 def get_main_keyboard(user_id):
     markup = ReplyKeyboardMarkup(resize_keyboard=True)
     markup.row(KeyboardButton("✨ Тарифы и Оплата"), KeyboardButton("📌 Инструкция"))
     markup.row(KeyboardButton("👤 Моя подписка"), KeyboardButton("👥 Пригласить друга"))
     markup.row(KeyboardButton("🔄 Обновить сервер"), KeyboardButton("🆘 Тех. поддержка"))
-    if user_id == ADMIN_ID: markup.row(KeyboardButton("⚙️ Админ-панель"))
+    if user_id == ADMIN_ID: markup.row(KeyboardButton("⚙️ Admin-панель"))
     return markup
 
 def send_tariffs_menu(chat_id):
-    days = 5 if datetime.now() >= datetime(2026, 10, 19) else 7
-    markup = InlineKeyboardMarkup(row_width=2)
-    markup.add(InlineKeyboardButton(f"🎁 Тест — {days} Дн.", callback_data="buy_test"))
-    markup.add(InlineKeyboardButton("🚀 1 Мес — 50 ⭐️", callback_data="buy_1m"), InlineKeyboardButton("🔥 3 Мес — 85 ⭐️", callback_data="buy_3m"))
-    markup.add(InlineKeyboardButton("💥 6 Мес — 150 ⭐️", callback_data="buy_6m"), InlineKeyboardButton("👑 1 Год — 250 ⭐️", callback_data="buy_1y"))
-    markup.add(InlineKeyboardButton("♾ НАВСЕГДА — 500 ⭐️", callback_data="buy_forever"))
-    bot.send_message(chat_id, "✨ **Тарифные планы Happ:**", parse_mode="Markdown", reply_markup=markup)
+    markup = InlineKeyboardMarkup(row_width=1)
+    markup.add(
+        InlineKeyboardButton("🎁 Получить ТЕСТ — 5 Дн. (Бесплатно)", callback_data="buy_test"),
+        InlineKeyboardButton("💳 Купить Подписку (Т-Банк / СБП)", callback_data="buy_premium")
+    )
+    bot.send_message(chat_id, "✨ **Тарифные планы Happ:**", reply_markup=markup)
 
 @bot.message_handler(commands=['start'])
 def send_welcome(message):
     user_id = message.from_user.id
+    if str(user_id) in load_db().get("banned", []): return
     init_user(user_id, message.from_user.username)
     args = message.text.split()
-    if len(args) > 1 and args.strip() != str(user_id):
+    if len(args) > 1 and args[1].strip() != str(user_id):
         db = load_db()
-        if args.strip() in db["users"]:
-            db["users"][args.strip()]["referrals"] += 1
-            db["users"][args.strip()]["days_left"] += 2
-            db["users"][args.strip()]["status"] = "🟢 Активна"
+        ref = args[1].strip()
+        if ref in db["users"]:
+            db["users"][ref]["referrals"] += 1
+            db["users"][ref]["days_left"] += 2
+            db["users"][ref]["status"] = "🟢 Активна"
             save_db(db)
-            try: bot.send_message(int(args.strip()), "🎉 Реферал! +2 дня подписки.")
+            try: bot.send_message(int(ref), "🎉 Реферал! +2 дня подписки.")
             except: pass
-            
-    welcome_text = "Добро Пожаловать В Door🚪VPN\nУ Нас Есть:\nПробная Подписка 7 Дней 🤩\nЛичный Выделенный Сервер Под Каждого👀\nСамые Низкие Цены🔥\n\nОформить подписку👇:"
+    welcome_text = (
+        "Добро Пожаловать В Door🚪VPN.\n"
+        "Наши преимущества:\n"
+        "Самые Низкие Цены🤩\n"
+        "Тестовый Период 5 Дней🔥\n"
+        "Под Каждого Пользователя Выделяется 1 Собственный Сервер👀\n"
+        "Бесконечное Кол-во Устройств на 1 подписку♾️\n"
+        "оформить подписку👇:"
+    )
     inline_markup = InlineKeyboardMarkup().add(InlineKeyboardButton("✨ Оформить подписку", callback_data="open_tariffs"))
     try: bot.send_photo(message.chat.id, LOGO_URL, caption=welcome_text, reply_markup=inline_markup)
     except: bot.send_message(message.chat.id, welcome_text, reply_markup=inline_markup)
@@ -64,6 +72,7 @@ def send_welcome(message):
 @bot.message_handler(func=lambda message: True)
 def handle_menu(message):
     user_id = message.from_user.id
+    if str(user_id) in load_db().get("banned", []): return
     text = message.text
     user_data = init_user(user_id, message.from_user.username)
 
@@ -83,41 +92,75 @@ def handle_menu(message):
         bot.send_message(message.chat.id, f"✅ **Ссылка обновлена!**\n\n`{APP_URL}/sub/{user_id}`", parse_mode="Markdown")
     elif text == "⚙️ Админ-панель" and user_id == ADMIN_ID:
         markup = InlineKeyboardMarkup(row_width=2)
-        markup.add(InlineKeyboardButton("📈 Статс", callback_data="admin_stats"), InlineKeyboardButton("🎫 Выдать", callback_data="admin_give"))
-        markup.add(InlineKeyboardButton("📢 Рассылка", callback_data="admin_broadcast"), InlineKeyboardButton("❌ Забрать", callback_data="admin_revoke"))
-        bot.send_message(message.chat.id, "🔒 **Админка:**", reply_markup=markup)
-    elif user_id == ADMIN_ID and admin_states.get(user_id) == "waiting_for_id":
-        admin_states[user_id] = f"waiting_for_days:{text.strip()}"
-        bot.send_message(message.chat.id, "🔢 Введите количество дней подписки:")
-    elif user_id == ADMIN_ID and str(admin_states.get(user_id, "")).startswith("waiting_for_days:"):
-        t_id = admin_states[user_id].split(":")[1]
+        markup.add(InlineKeyboardButton("🎫 Выдать подписку", callback_data="a_give"), InlineKeyboardButton("➖ Убрать дни", callback_data="a_sub"))
+        markup.add(InlineKeyboardButton("❌ Аннулировать подписку", callback_data="a_clear"), InlineKeyboardButton("🚫 Забанить юзера", callback_data="a_ban"))
+        markup.add(InlineKeyboardButton("🟢 Разбанить юзера", callback_data="a_unban"), InlineKeyboardButton("🔍 Проверить профиль", callback_data="a_view"))
+        markup.add(InlineKeyboardButton("📢 Рассылка", callback_data="a_bc"), InlineKeyboardButton("📊 Статистика", callback_data="a_stats"))
+        bot.send_message(message.chat.id, "🔒 **Супер-Админка Door VPN:**", reply_markup=markup)
+    elif user_id == ADMIN_ID and str(admin_states.get(user_id, "")).startswith("wait_user_"):
+        mode = admin_states[user_id].split("_")[2]
+        t_id = find_user_by_input(text)
+        if not t_id and mode != "unban":
+            bot.send_message(message.chat.id, "❌ Юзер не найден в бд бота.")
+            admin_states[user_id] = None
+            return
+        db = load_db()
+        if mode == "give":
+            admin_states[user_id] = f"wait_days_give:{t_id}"
+            bot.send_message(message.chat.id, "🔢 Сколько дней ДОБАВИТЬ?:")
+        elif mode == "sub":
+            admin_states[user_id] = f"wait_days_sub:{t_id}"
+            bot.send_message(message.chat.id, "🔢 Сколько дней ОТНЯТЬ?:")
+        elif mode == "clear":
+            admin_states[user_id] = None
+            db["users"][t_id].update({"status": "🔴 Не активна", "days_left": 0})
+            save_db(db)
+            bot.send_message(message.chat.id, f"✅ Подписка юзера {t_id} сброшена в ноль.")
+        elif mode == "ban":
+            admin_states[user_id] = None
+            if t_id not in db["banned"]: db["banned"].append(t_id)
+            db["users"][t_id].update({"status": "🔴 Не активна", "days_left": 0})
+            save_db(db)
+            bot.send_message(message.chat.id, f"🚫 Юзер {t_id} полностью забанен.")
+        elif mode == "unban":
+            admin_states[user_id] = None
+            clean_input = text.strip().lower().replace("@", "")
+            found = None
+            for b_id in db["banned"]:
+                if b_id == clean_input or db["users"].get(b_id, {}).get("username") == clean_input: found = b_id
+            if found:
+                db["banned"].remove(found)
+                save_db(db)
+                bot.send_message(message.chat.id, f"🟢 Юзер {found} успешно разбанен.")
+            else: bot.send_message(message.chat.id, "❌ Юзер не найден в списке бана.")
+        elif mode == "view":
+            admin_states[user_id] = None
+            u_d = db["users"][t_id]
+            bot.send_message(message.chat.id, f"📋 Профиль {t_id}:\nНик: @{u_d['username']}\nСтатус: {u_d['status']}\nДней: {u_d['days_left']}")
+    elif user_id == ADMIN_ID and str(admin_states.get(user_id, "")).startswith("wait_days_"):
+        mode, t_id = admin_states[user_id].split(":")
         try: days = int(text.strip())
-        except: days = 30
+        except: days = 0
         admin_states[user_id] = None
         db = load_db()
-        if t_id in db["users"]:
-            db["users"][t_id]["status"] = "🟢 Активна"
+        if mode == "wait_days_give":
             db["users"][t_id]["days_left"] += days
-            save_db(db)
-            bot.send_message(message.chat.id, f"✅ Пользователю {t_id} добавлено {days} дней!")
+            db["users"][t_id]["status"] = "🟢 Активна"
+            bot.send_message(message.chat.id, f"✅ Добавлено {days} дней.")
             try: bot.send_message(int(t_id), f"🎉 Подписка продлена на {days} дней!")
             except: pass
-        else: bot.send_message(message.chat.id, "❌ Пользователь не найден.")
-    elif user_id == ADMIN_ID and admin_states.get(user_id) == "waiting_for_revoke_id":
-        admin_states[user_id] = None
-        db = load_db()
-        if text.strip() in db["users"]:
-            db["users"][text.strip()]["status"] = "🔴 Не активна"
-            db["users"][text.strip()]["days_left"] = 0
-            save_db(db)
-            bot.send_message(message.chat.id, f"❌ Подписка {text.strip()} аннулирована.")
+        elif mode == "wait_days_sub":
+            db["users"][t_id]["days_left"] = max(0, db["users"][t_id]["days_left"] - days)
+            if db["users"][t_id]["days_left"] == 0: db["users"][t_id]["status"] = "🔴 Не активна"
+            bot.send_message(message.chat.id, f"✅ Списано {days} дней.")
+        save_db(db)
     elif user_id == ADMIN_ID and admin_states.get(user_id) == "waiting_for_broadcast":
         admin_states[user_id] = None
         count = 0
         for uid in load_db()["users"]:
             try: bot.send_message(int(uid), text); count += 1
             except: pass
-        bot.send_message(message.chat.id, f"📢 Рассылка завершена для {count} человек.")
+        bot.send_message(message.chat.id, f"📢 Отправлено {count} людям.")
 
 @bot.callback_query_handler(func=lambda call: True)
 def handle_callbacks(call):
@@ -128,23 +171,26 @@ def handle_callbacks(call):
     elif call.data == "buy_test":
         bot.answer_callback_query(call.id)
         db = load_db()
-        if db["users"][str(user_id)]["has_test"]:
-            bot.send_message(call.message.chat.id, "❌ Вы уже брали тест.")
+        if db["users"][str(user_id)]["has_test"]: bot.send_message(call.message.chat.id, "❌ Вы уже брали тест.")
         else:
-            days = 5 if datetime.now() >= datetime(2026, 10, 19) else 7
-            db["users"][str(user_id)].update({"has_test": True, "days_left": days, "status": "🟢 Активна"})
+            db["users"][str(user_id)].update({"has_test": True, "days_left": 5, "status": "🟢 Активна"})
             save_db(db)
-            bot.send_message(call.message.chat.id, f"🎉 **Тест на {days} дней активирован!**")
-    elif call.data in ["admin_give", "admin_revoke", "admin_broadcast"] and user_id == ADMIN_ID:
+            bot.send_message(call.message.chat.id, "🎉 **Тест на 5 дней успешно активирован!**")
+    elif call.data == "buy_premium":
         bot.answer_callback_query(call.id)
-        modes = {"admin_give": ("waiting_for_id", "✍️ **Введи ID:**"), "admin_revoke": ("waiting_for_revoke_id", "✍️ **Введи ID для блокировки:**"), "admin_broadcast": ("waiting_for_broadcast", "✍️ Введите текст рассылки:")}
-        admin_states[user_id] = modes[call.data][0]
-        bot.send_message(call.message.chat.id, modes[call.data][1])
-    elif call.data == "admin_stats" and user_id == ADMIN_ID:
+        pay_msg = f"💳 **Покупка премиум-доступа Happ**\n\n💵 **Стоимость:** 100 рублей / 30 дней.\n\nПереведите **100 рублей** по номеру телефона на Т-Банк. Отправьте скриншот чека разработчику с вашим ID: `{user_id}`"
+        bot.send_message(call.message.chat.id, pay_msg, reply_markup=InlineKeyboardMarkup().add(InlineKeyboardButton("💬 Отправить чек", url="tg://resolve?domain=potato_xd0")))
+    elif call.data.startswith("a_") and user_id == ADMIN_ID:
         bot.answer_callback_query(call.id)
-        bot.send_message(call.message.chat.id, f"📊 Пользователей: {len(load_db()['users'])}")
-    elif call.data.startswith("buy_"):
-        bot.answer_callback_query(call.id, "Оплата в режиме отладки.", show_alert=True)
+        if call.data == "a_stats":
+            bot.send_message(call.message.chat.id, f"📊 Юзеров: {len(load_db()['users'])}\n🚫 В бане: {len(load_db().get('banned', []))}")
+        elif call.data == "a_bc":
+            admin_states[user_id] = "waiting_for_broadcast"
+            bot.send_message(call.message.chat.id, "✍️ Введите текст рассылки:")
+        else:
+            mode = call.data.split("_")[1]
+            admin_states[user_id] = f"wait_user_{mode}"
+            bot.send_message(call.message.chat.id, "✍️ **Введи @username или ID пользователя:**")
 
 @app.route('/' + BOT_TOKEN, methods=['POST'])
 def getMessage():
